@@ -26,13 +26,26 @@ on:
         required: true
         type: string
       run_id:
-        description: 'Actions run ID in that repo holding the artifact'
-        required: true
+        description: 'Actions run ID holding the artifact (artifact mode only)'
+        required: false
         type: string
       artifact_name:
         description: 'Artifact name on that run (blank = download them all)'
         required: false
         type: string
+      source_path:
+        description: 'Instead of an artifact: a path in the source repo. A directory is zipped, a file is taken as-is.'
+        required: false
+        type: string
+      source_ref:
+        description: 'Branch, tag or SHA for source_path mode (blank = default branch)'
+        required: false
+        type: string
+      append:
+        description: 'Add these files to the release if the tag already exists, instead of failing'
+        required: false
+        default: false
+        type: boolean
       title:
         description: 'Release title (blank = "<project> <version>")'
         required: false
@@ -54,13 +67,17 @@ jobs:
       - uses: actions/checkout@v4
 
       # Fail with something readable rather than a 404 from gh further down.
+      # Only needed when the build comes from somewhere this repo's own token
+      # cannot read — which is every private source repo, but not this one.
       - name: Check the source token exists
+        if: inputs.source_repo != github.repository
         env:
           SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
         run: |
           if [ -z "$SOURCE_TOKEN" ]; then
             echo "::error::Secret SOURCE_TOKEN is not set. It needs a fine-grained PAT with"
-            echo "::error::Actions: Read-only on ${{ inputs.source_repo }}. See the repo README."
+            echo "::error::Actions: Read-only (and Contents: Read-only for source_path mode)"
+            echo "::error::on ${{ inputs.source_repo }}. See the repo README."
             exit 1
           fi
 
@@ -76,9 +93,15 @@ jobs:
       # Artifacts are always zipped by Actions; `gh run download` unpacks them,
       # so what lands in assets/ is the real files, not a wrapper zip.
       - name: Download the build from ${{ inputs.source_repo }}
+        if: inputs.source_path == ''
         env:
           GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
         run: |
+          if [ -z "${{ inputs.run_id }}" ]; then
+            echo "::error::Artifact mode needs run_id. Set source_path instead to take"
+            echo "::error::files straight out of the repository."
+            exit 1
+          fi
           mkdir -p assets
           if [ -n "${{ inputs.artifact_name }}" ]; then
             gh run download "${{ inputs.run_id }}" \
@@ -96,12 +119,51 @@ jobs:
           echo "Downloaded:"
           ls -lh assets
 
+      # Path mode: the build is committed in the source repo rather than being
+      # an Actions artifact. The iPad edition is like this — it is checked in
+      # precisely so that installing it needs no toolchain.
+      - name: Check out ${{ inputs.source_repo }}
+        if: inputs.source_path != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_ref }}
+          token: ${{ inputs.source_repo == github.repository && github.token || secrets.SOURCE_TOKEN }}
+          path: .source
+          fetch-depth: 1
+
+      - name: Collect the build from that checkout
+        if: inputs.source_path != ''
+        env:
+          SRC: ${{ inputs.source_path }}
+          PROJECT: ${{ inputs.project }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p assets
+          FULL=".source/$SRC"
+          if [ -d "$FULL" ]; then
+            # A directory is only useful to someone as one file they can unpack.
+            NAME="$PROJECT-$VERSION-$(basename "$SRC").zip"
+            (cd "$FULL" && zip -qr "$GITHUB_WORKSPACE/assets/$NAME" .)
+          elif [ -f "$FULL" ]; then
+            cp "$FULL" assets/
+          else
+            echo "::error::No such path in ${{ inputs.source_repo }}: $SRC"
+            exit 1
+          fi
+          echo "Collected:"
+          ls -lh assets
+
       - name: Checksum every file
         id: sums
         run: |
           {
             echo 'body<<RELEASE_BODY_EOF'
-            echo "Built from \`${{ inputs.source_repo }}\` run [${{ inputs.run_id }}](https://github.com/${{ inputs.source_repo }}/actions/runs/${{ inputs.run_id }})."
+            if [ -n "${{ inputs.source_path }}" ]; then
+              echo "Built from \`${{ inputs.source_repo }}\`, path \`${{ inputs.source_path }}\`."
+            else
+              echo "Built from \`${{ inputs.source_repo }}\` run [${{ inputs.run_id }}](https://github.com/${{ inputs.source_repo }}/actions/runs/${{ inputs.run_id }})."
+            fi
             echo
             echo 'Windows `.exe` files here are not code-signed, so SmartScreen shows'
             echo '"Windows protected your PC" on first run — choose **More info → Run anyway**.'
@@ -129,15 +191,31 @@ jobs:
           VERSION: ${{ inputs.version }}
           NOTES: ${{ steps.sums.outputs.body }}
           PRERELEASE: ${{ inputs.prerelease }}
+          APPEND: ${{ inputs.append }}
         run: |
           : "${TITLE:=$PROJECT $VERSION}"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::Release $TAG already exists. Bump the version, or delete it first."
-            exit 1
-          fi
-
           printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$APPEND" != "true" ]; then
+              echo "::error::Release $TAG already exists. Bump the version, pass append,"
+              echo "::error::or delete it first."
+              exit 1
+            fi
+            # Same project, same version, another platform. Keep the existing
+            # notes and add this source's checksums, so the release never lists
+            # only some of what is attached to it.
+            gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/old.md"
+            cat "$RUNNER_TEMP/old.md" "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/merged.md"
+            gh release upload "$TAG" assets/* --clobber
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/merged.md"
+            {
+              echo "### Added to \`$TAG\`"
+              gh release view "$TAG" --json url --jq .url
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
           # Dispatched through the API a boolean input can arrive as the string
           # "false", which is truthy in an Actions expression — so compare it

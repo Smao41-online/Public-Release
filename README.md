@@ -14,7 +14,8 @@ here.
 
 | Project | What it is | Latest |
 |---|---|---|
-| [Math game](math-game/) | Block Math Escape — multiplication 0–10 for ages 5–8, Minecraft styling | [Releases](../../releases?q=math-game) |
+| [Math game](math-game/) | Block Math Escape — multiplication 0–10 for ages 5–8, Minecraft styling. Windows installer, portable, browser and iPad builds | [Releases](../../releases?q=math-game) |
+| [A-Z App](a-z-app/) | Alphabet learning for ages 3–6, Czech and English | [Releases](../../releases?q=a-z-app) |
 
 ## How this repo is organised
 
@@ -26,6 +27,10 @@ long as both follow the project's short name.
 Public-Release/
 ├── math-game/          <- one folder per project: what it is, how to install
 │   └── README.md
+├── a-z-app/
+│   ├── README.md
+│   └── build/          <- exception: this project's source was lost, so its
+│                          build is kept in version control as well
 └── .github/workflows/
     └── publish.yml     <- publishes a build as a release, for any project
 ```
@@ -75,10 +80,19 @@ private repository the build came from.
 
 ### The automated way
 
-`.github/workflows/publish.yml` pulls an artifact straight out of a private
-repository's Actions run and publishes it here. **Actions → Publish a build →
-Run workflow**, then fill in the project, version, source repo, run ID and
-artifact name. It attaches SHA-256 checksums to the release notes by itself.
+`.github/workflows/publish.yml` publishes a build here from somewhere else.
+**Actions → Publish a build → Run workflow**. It attaches SHA-256 checksums to
+the release notes by itself, and takes the build from either of two places:
+
+| Mode | Set | Use for |
+|---|---|---|
+| **Artifact** | `run_id` + `artifact_name` | anything built by GitHub Actions — the artifact is unwrapped for you |
+| **Path** | `source_path` (+ `source_ref`) | a build committed in the repo. A directory is zipped; a single file is taken as-is |
+
+Set `append` when the tag already exists and you are adding another platform to
+the same version — the existing notes are kept and the new checksums added, so
+a release never lists only some of what is attached to it. Without it, an
+existing tag is an error rather than a surprise.
 
 It needs one secret, once:
 
