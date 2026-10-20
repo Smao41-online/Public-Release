@@ -114,23 +114,43 @@ jobs:
             echo 'RELEASE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      # Every value reaches the shell as an environment variable, never as
+      # ${{ }} pasted into the script. The release body is markdown full of
+      # backticks and code fences; interpolated directly, bash reads those as
+      # command substitution and the step dies before gh ever runs. Passing it
+      # through env and a file is both correct and the only safe way to handle
+      # text this workflow did not write.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.project }}/v${{ inputs.version }}
+          TITLE: ${{ inputs.title }}
+          PROJECT: ${{ inputs.project }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ steps.sums.outputs.body }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          TITLE="${{ inputs.title }}"
-          [ -n "$TITLE" ] || TITLE="${{ inputs.project }} ${{ inputs.version }}"
+          : "${TITLE:=$PROJECT $VERSION}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::Release $TAG already exists. Bump the version, or delete it first."
             exit 1
           fi
 
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
+
+          # Dispatched through the API a boolean input can arrive as the string
+          # "false", which is truthy in an Actions expression — so compare it
+          # here rather than relying on `inputs.prerelease && ...`.
+          FLAGS=""
+          [ "$PRERELEASE" = "true" ] && FLAGS="--prerelease"
+
           gh release create "$TAG" assets/* \
             --title "$TITLE" \
-            --notes "${{ steps.sums.outputs.body }}" \
-            ${{ inputs.prerelease && '--prerelease' || '' }}
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            $FLAGS
 
-          echo "### Published \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
-          gh release view "$TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Published \`$TAG\`"
+            gh release view "$TAG" --json url --jq .url
+          } >> "$GITHUB_STEP_SUMMARY"
