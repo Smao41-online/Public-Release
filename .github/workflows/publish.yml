@@ -1,0 +1,136 @@
+# Publish a build from a private repository as a public release here.
+#
+# Deliberately generic: every project-specific value is an input, so the same
+# workflow serves math-game, a new project, or a build from a branch, with no
+# edit to this file. The only thing to keep consistent is the naming rule —
+# folder `<project>/` and tag `<project>/v<version>` — which is what keeps
+# projects from mixing on the releases page.
+#
+# Actions -> Publish a build -> Run workflow.
+
+name: Publish a build
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project short name — must match the folder here (e.g. math-game)'
+        required: true
+        type: string
+      version:
+        description: 'Version, without a leading v (e.g. 0.1.0)'
+        required: true
+        type: string
+      source_repo:
+        description: 'Private repo the build came from (owner/name)'
+        required: true
+        type: string
+      run_id:
+        description: 'Actions run ID in that repo holding the artifact'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Artifact name on that run (blank = download them all)'
+        required: false
+        type: string
+      title:
+        description: 'Release title (blank = "<project> <version>")'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write          # to create the release here
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail with something readable rather than a 404 from gh further down.
+      - name: Check the source token exists
+        env:
+          SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_TOKEN" ]; then
+            echo "::error::Secret SOURCE_TOKEN is not set. It needs a fine-grained PAT with"
+            echo "::error::Actions: Read-only on ${{ inputs.source_repo }}. See the repo README."
+            exit 1
+          fi
+
+      - name: Check the project folder exists
+        run: |
+          if [ ! -d "${{ inputs.project }}" ]; then
+            echo "::error::No folder named '${{ inputs.project }}' in this repo."
+            echo "::error::Create it with a README first — the folder and the tag prefix"
+            echo "::error::must match, or the releases page stops being sorted by project."
+            exit 1
+          fi
+
+      # Artifacts are always zipped by Actions; `gh run download` unpacks them,
+      # so what lands in assets/ is the real files, not a wrapper zip.
+      - name: Download the build from ${{ inputs.source_repo }}
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+        run: |
+          mkdir -p assets
+          if [ -n "${{ inputs.artifact_name }}" ]; then
+            gh run download "${{ inputs.run_id }}" \
+              --repo "${{ inputs.source_repo }}" \
+              --name "${{ inputs.artifact_name }}" \
+              --dir assets
+          else
+            gh run download "${{ inputs.run_id }}" \
+              --repo "${{ inputs.source_repo }}" \
+              --dir assets
+          fi
+          # Flatten: gh nests per-artifact folders when more than one is pulled.
+          find assets -mindepth 2 -type f -exec mv -n -t assets {} +
+          find assets -mindepth 1 -type d -empty -delete
+          echo "Downloaded:"
+          ls -lh assets
+
+      - name: Checksum every file
+        id: sums
+        run: |
+          {
+            echo 'body<<RELEASE_BODY_EOF'
+            echo "Built from \`${{ inputs.source_repo }}\` run [${{ inputs.run_id }}](https://github.com/${{ inputs.source_repo }}/actions/runs/${{ inputs.run_id }})."
+            echo
+            echo 'Windows `.exe` files here are not code-signed, so SmartScreen shows'
+            echo '"Windows protected your PC" on first run — choose **More info → Run anyway**.'
+            echo
+            echo '### SHA-256'
+            echo
+            echo '```'
+            cd assets && sha256sum * || shasum -a 256 *
+            echo '```'
+            echo 'RELEASE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.project }}/v${{ inputs.version }}
+        run: |
+          TITLE="${{ inputs.title }}"
+          [ -n "$TITLE" ] || TITLE="${{ inputs.project }} ${{ inputs.version }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Bump the version, or delete it first."
+            exit 1
+          fi
+
+          gh release create "$TAG" assets/* \
+            --title "$TITLE" \
+            --notes "${{ steps.sums.outputs.body }}" \
+            ${{ inputs.prerelease && '--prerelease' || '' }}
+
+          echo "### Published \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
