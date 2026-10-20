@@ -15,7 +15,6 @@ here.
 | Project | What it is | Latest |
 |---|---|---|
 | [Math game](math-game/) | Block Math Escape — multiplication 0–10 for ages 5–8, Minecraft styling. Windows installer, portable, browser and iPad builds | [Releases](../../releases?q=math-game) |
-| [A-Z App](a-z-app/) | Alphabet learning for ages 3–6, Czech and English | [Releases](../../releases?q=a-z-app) |
 
 ## How this repo is organised
 
@@ -27,10 +26,6 @@ long as both follow the project's short name.
 Public-Release/
 ├── math-game/          <- one folder per project: what it is, how to install
 │   └── README.md
-├── a-z-app/
-│   ├── README.md
-│   └── build/          <- exception: this project's source was lost, so its
-│                          build is kept in version control as well
 └── .github/workflows/
     └── publish.yml     <- publishes a build as a release, for any project
 ```
@@ -45,6 +40,14 @@ Public-Release/
 Tags with a `/` in them are perfectly valid and are what makes the releases
 page group by project. Filter with `?q=math-game` on the releases page, or
 `gh release list | grep math-game`.
+
+## Projects that are not ready
+
+A project only gets a folder here once it is fit to hand to someone. Work that
+is parked — unfinished, or blocked on something — lives in the private
+**On-HOLD** repository, which uses this same folder convention so a project
+moves between the two without being renamed. Publishing something that is not
+ready is worse than not publishing it: a release implies it is finished.
 
 ## Adding a new project
 
