@@ -165,9 +165,14 @@ jobs:
               echo "Built from \`${{ inputs.source_repo }}\` run [${{ inputs.run_id }}](https://github.com/${{ inputs.source_repo }}/actions/runs/${{ inputs.run_id }})."
             fi
             echo
-            echo 'Windows `.exe` files here are not code-signed, so SmartScreen shows'
-            echo '"Windows protected your PC" on first run — choose **More info → Run anyway**.'
-            echo
+            # Only say this when there is actually a .exe in what we just
+            # collected — appending another platform to a release should not
+            # repeat a Windows warning that has nothing to do with it.
+            if ls assets/*.exe >/dev/null 2>&1; then
+              echo 'Windows `.exe` files here are not code-signed, so SmartScreen shows'
+              echo '"Windows protected your PC" on first run — choose **More info → Run anyway**.'
+              echo
+            fi
             echo '### SHA-256'
             echo
             echo '```'
