@@ -15,6 +15,21 @@ here.
 | Project | What it is | Latest |
 |---|---|---|
 | [Math game](math-game/) | Block Math Escape — multiplication 0–10 for ages 5–8, Minecraft styling. Windows installer, portable, browser and iPad builds | [Releases](../../releases?q=math-game) |
+| [Board Game Galaxy](board-game-galaxy/) | A board game collection as an installable phone app — browse 720 games, scan a box in a shop, pick something to play. Snapshot, no account, works offline | [Install](https://smao41-online.github.io/Public-Release/board-game-galaxy/) · [Releases](../../releases?q=board-game-galaxy) |
+
+### One of these is also hosted
+
+Board Game Galaxy is a web app, so it is **served** from this repository as well as
+released: GitHub Pages publishes the branch as-is, which makes
+`board-game-galaxy/` installable to a phone's home screen. Two consequences worth
+knowing before changing anything here:
+
+- `.nojekyll` at the root must stay. Without it Pages runs Jekyll, whose default
+  rules drop any `vendor/` folder — which would silently take the barcode scanner
+  out of the app.
+- Everything on `main` is served, not just that folder. It is all public anyway;
+  just do not add anything here expecting it to be reachable only to someone
+  browsing GitHub.
 
 ## How this repo is organised
 
@@ -26,6 +41,10 @@ long as both follow the project's short name.
 Public-Release/
 ├── math-game/          <- one folder per project: what it is, how to install
 │   └── README.md
+├── board-game-galaxy/  <- a web app, so the build itself lives here and is served
+│   ├── README.md
+│   └── index.html …
+├── .nojekyll           <- keep: stops Pages from dropping vendor/ (see above)
 └── .github/workflows/
     └── publish.yml     <- publishes a build as a release, for any project
 ```
