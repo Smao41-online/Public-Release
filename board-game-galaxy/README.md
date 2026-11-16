@@ -36,6 +36,16 @@ It also runs fine on a desktop browser; the page simply stays phone-shaped.
 Any game page has **↗ Share this game**, which hands the title, rating and link to
 whatever you normally share with.
 
+## Make it work with no signal
+
+Tap **ⓘ** at the top, then **⬇️ Save the pictures for offline**. It downloads all
+698 box pictures — about 8.5 MB, so do it on wi-fi — and from then on the app opens
+with no connection at all, pictures included. It can be stopped and restarted, and
+never fetches a picture it already has.
+
+Without that step the collection, search and scanning still work offline; only the
+box art needs a connection, and anything missing is drawn as a planet instead.
+
 ## What it deliberately does not do
 
 It is read-only. There is no adding, editing, removing or publishing — those live in
@@ -43,9 +53,9 @@ the private tool this snapshot was exported from. Personal notes are not include
 
 ## Good to know
 
-- **Box art comes from BoardGameGeek's public image servers** when you are online.
-  Offline, or if an image is missing, each game is drawn as its own coloured planet
-  instead — nothing breaks.
+- **Box art comes from BoardGameGeek's public image servers** when you are online,
+  and is kept on the phone once seen. Offline, or if an image is missing, each game
+  is drawn as its own coloured planet instead — nothing breaks.
 - **The barcode scanner needs `https`**, which the install link above is. Opening the
   files from a disk (`file://…`) lets you browse everything but the camera will not
   start, and neither will the home-screen install.
